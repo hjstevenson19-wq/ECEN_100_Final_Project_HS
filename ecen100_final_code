@@ -1,0 +1,129 @@
+// To run this code on esp32, download the included libraries.
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7789.h>
+#include <Adafruit_VL53L0X.h>
+#include <SPI.h>
+#include <DHT.h>
+// The next step is to create get it sending data via BlueTooth so I can start to test parts while making changes to the code. 
+// Will likely use the coding lab or AI to help me set up BlueTooth
+
+// I2C adress for VL53L0X ToF is 0x29
+Adafruit_VL53L0X lox = Adafruit_VL53L0X();
+#define DHTTYPE DHT22
+#define DHTPIN 32
+DHT dht(DHTPIN, DHTTYPE); // DHT setup sourced from Weather Station project doc. 
+const int pir_pin = 33;
+const int lm_ls_pin = 26;
+const int led = 13;
+const int relay[2] = {19, 18};
+const int button = 4;
+const int pot_pin = 34;
+
+float temp = 0;
+float hum = 0;
+float read_pot = 0;
+
+// I used AI to help me identify what specific model of the photosensitive model and IRD works in order to be able to code it
+// I used the PIR sensor project to help me write the code to run the PIR sensor
+int read_ls = 0;
+int read_pir = 0;
+
+void data(){};
+
+void setup() {
+  Serial.begin(115200);
+
+  dht.begin();
+
+  /*Code controlling the ToF sensor was taken from:
+  https://cdn-learn.adafruit.com/downloads/pdf/adafruit-vl53l0x-micro-lidar-distance-sensor-breakout.pdf
+  Code copied from example of VL53LOX example in the Adafruit_VL53LOX example code
+  AI was used to debug ToF sensor issues
+  */
+  if (!lox.begin()) { 
+    Serial.println("Failed to initialize VL53L0X");
+    while (true) {
+      delay(1000);
+    }
+  }
+
+  // I consulted AI to make sure that I am using the currect input functions and am not needing the included pullup and pulldown functions
+  pinMode(pir_pin, INPUT);
+  pinMode(lm_ls_pin, INPUT);
+  pinMode(led, OUTPUT);
+  pinMode(button, INPUT_PULLUP);
+  
+  for (int i = 0; i < 2; i++) {
+  pinMode(relay[i], OUTPUT);
+  digitalWrite(relay[i], HIGH); // initially off for active-low relays. I think AI helped me debug here.
+  }
+
+  delay(100);
+
+  Serial.print("Starting Up\n");
+  delay(30000); //Taken from PIR sensor project doc
+
+}
+
+/* I have this as a comment right now so I can figure out the SR latch logic code and needs for the void data loop
+void loop(){
+
+}
+*/ 
+
+void loop() {
+  read_ls = digitalRead(lm_ls_pin);
+  read_pir = digitalRead(pir_pin);
+
+  VL53L0X_RangingMeasurementData_t distance;
+  lox.rangingTest(&distance, false); // pass in 'true' to get debug data printout!
+
+  if (distance.RangeStatus != 4) {  // phase failures have incorrect data
+    Serial.print("Distance (mm): "); Serial.println(distance.RangeMilliMeter);
+  } else {
+    Serial.println("Out of range");
+  }
+
+  read_pot = analogRead(pot_pin);
+
+  // Read humidity
+  hum = dht.readHumidity();
+  // Read temperature in Celsius
+  temp = dht.readTemperature();
+
+  if (read_ls == 1) {
+    digitalWrite (relay[0], LOW);
+    Serial.printf("\nIt is currently dark\n");
+  }
+  else{
+    digitalWrite(relay[0], HIGH);
+    Serial.printf("It is currently bright\n");
+  }
+
+  // I want to edit the logic here so if the PIR pin reads high, it wakes up the ToF and sets an output based on ToF reading
+  if ((read_pir == 1)) { // (read_ird == 0) && 
+    digitalWrite (relay[1], LOW);
+    digitalWrite (led, HIGH);
+    Serial.printf("Someone may be close\n");
+  }
+  /* I used AI to help me debug this section of the code 
+  I had if true || if true run, and it wasn;t working
+  Suggested having the not true not equal not true
+  */
+  // else if (!(read_ird == 0) != !(read_pir == 1)) { 
+  //   digitalWrite (relay[1], HIGH);
+  //   digitalWrite (led, HIGH);
+  //   Serial.printf("Someone may be close\n");
+  // }
+  else {
+    digitalWrite (relay[1], HIGH);
+    digitalWrite (led, LOW);
+    Serial.printf("Nobody is near\n");
+  }
+
+  Serial.printf("PIR = %d \n", read_pir);
+  Serial.printf("Potentiometer Value: %.2f \n", read_pot);
+  Serial.printf("Humidity: %.1f % | Temperature: %1.f \n\n", hum, temp);
+
+  delay(3000);
+}
