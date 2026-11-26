@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ESP32 Sensor Dashboard</title>
+</head>
+<body>
+  <h1>ESP32 Sensor Dashboard</h1>
+
+  <button id="connectButton">Connect</button>
+  <button id="ledOnButton">LED On</button>
+  <button id="ledOffButton">LED Off</button>
+
+  <p>Status: <span id="status">Disconnected</span></p>
+  <p>Sensor value: <span id="sensorValue">--</span></p>
+
+  <script>
+    const SERVICE_UUID =
+      "3ff2cc31-1d89-4f95-8f77-2153875a92a2";
+
+    const SENSOR_UUID =
+      "be8a533f-24a5-4d11-9765-03299dea1b00";
+
+    const COMMAND_UUID =
+      "25f7e02b-64e4-4ca3-ab6c-b32aed2e8c04";
+
+    let device;
+    let commandCharacteristic;
+
+    const statusText = document.getElementById("status");
+    const sensorText = document.getElementById("sensorValue");
+
+    document.getElementById("connectButton").addEventListener("click", connect);
+
+    document.getElementById("ledOnButton").addEventListener("click", () => {
+      sendCommand("LED_ON");
+    });
+
+    document.getElementById("ledOffButton").addEventListener("click", () => {
+      sendCommand("LED_OFF");
+    });
+
+    async function connect() {
+      try {
+        statusText.textContent = "Searching...";
+
+        device = await navigator.bluetooth.requestDevice({
+          filters: [
+            {
+              services: [SERVICE_UUID]
+            }
+          ]
+        });
+
+        device.addEventListener(
+          "gattserverdisconnected",
+          handleDisconnect
+        );
+
+        const gattServer = await device.gatt.connect();
+
+        const service =
+          await gattServer.getPrimaryService(SERVICE_UUID);
+
+        const sensorCharacteristic =
+          await service.getCharacteristic(SENSOR_UUID);
+
+        commandCharacteristic =
+          await service.getCharacteristic(COMMAND_UUID);
+
+        await sensorCharacteristic.startNotifications();
+
+        sensorCharacteristic.addEventListener(
+          "characteristicvaluechanged",
+          handleSensorNotification
+        );
+
+        statusText.textContent = "Connected";
+      } catch (error) {
+        console.error(error);
+        statusText.textContent = "Connection failed";
+      }
+    }
+
+    function handleSensorNotification(event) {
+      const bytes = event.target.value;
+      const text = new TextDecoder().decode(bytes);
+
+      sensorText.textContent = text;
+    }
+
+    async function sendCommand(command) {
+      if (!commandCharacteristic) {
+        statusText.textContent = "Not connected";
+        return;
+      }
+
+      const data = new TextEncoder().encode(command);
+
+      await commandCharacteristic.writeValueWithResponse(data);
+    }
+
+    function handleDisconnect() {
+      statusText.textContent = "Disconnected";
+      commandCharacteristic = null;
+    }
+  </script>
+</body>
+</html>
